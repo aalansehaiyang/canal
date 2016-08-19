@@ -365,6 +365,7 @@ public class CanalController {
         return StringUtils.trim(properties.getProperty(StringUtils.trim(key)));
     }
 
+    // 总入口
     public void start() throws Throwable {
         logger.info("## start the canal server[{}:{}]", ip, port);
         // 创建整个canal的工作节点
