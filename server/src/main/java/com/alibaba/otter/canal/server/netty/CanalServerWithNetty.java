@@ -1,6 +1,14 @@
 package com.alibaba.otter.canal.server.netty;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.util.Iterator;
+import java.util.Set;
 import java.util.concurrent.Executors;
 
 import org.apache.commons.lang.StringUtils;
@@ -54,7 +62,7 @@ public class CanalServerWithNetty extends AbstractCanalLifeCycle implements Cana
         }
 
         this.bootstrap = new ServerBootstrap(new NioServerSocketChannelFactory(Executors.newCachedThreadPool(),
-            Executors.newCachedThreadPool()));
+                                                                               Executors.newCachedThreadPool()));
 
         // 构造对应的pipeline
         bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
@@ -64,7 +72,7 @@ public class CanalServerWithNetty extends AbstractCanalLifeCycle implements Cana
                 pipelines.addLast(FixedHeaderFrameDecoder.class.getName(), new FixedHeaderFrameDecoder());
                 pipelines.addLast(HandshakeInitializationHandler.class.getName(), new HandshakeInitializationHandler());
                 pipelines.addLast(ClientAuthenticationHandler.class.getName(),
-                    new ClientAuthenticationHandler(embeddedServer));
+                                  new ClientAuthenticationHandler(embeddedServer));
 
                 SessionHandler sessionHandler = new SessionHandler(embeddedServer);
                 pipelines.addLast(SessionHandler.class.getName(), sessionHandler);
@@ -78,6 +86,41 @@ public class CanalServerWithNetty extends AbstractCanalLifeCycle implements Cana
         } else {
             this.serverChannel = bootstrap.bind(new InetSocketAddress(this.port));
         }
+    }
+
+    public void aa() throws IOException {
+        Selector selector = Selector.open();
+        while (true) {
+            // selector.select是阻塞的，一直等到有客户端连接过来才返回，然后会检查发生的是哪一种事件，然后根据不同的事件做不同的操作
+            selector.select();
+            Set<SelectionKey> selectionKeys = selector.selectedKeys();
+            Iterator<SelectionKey> it = selectionKeys.iterator();
+            while (it.hasNext()) {
+                SelectionKey key = it.next();
+                if (key.isAcceptable()) {
+                    // 处理新接入的请求消息
+                    ServerSocketChannel ssc = (ServerSocketChannel) key.channel();
+                    SocketChannel sc = ssc.accept();
+                    sc.configureBlocking(false);
+                    // 注册读事件
+                    sc.register(selector, SelectionKey.OP_READ);
+                }
+                if (key.isReadable()) {
+                    // 处理读请求
+                    SocketChannel sc = (SocketChannel) key.channel();
+                    ByteBuffer readBuffer = ByteBuffer.allocate(1024);
+                    int readBytes = sc.read(readBuffer);
+                    if (readBytes > 0) {
+                        readBuffer.flip();
+                        byte[] bytes = new byte[readBuffer.remaining()];
+                        readBuffer.get(bytes);
+                        System.out.println(new String(bytes, "UTF-8"));
+                    }
+                }
+
+            }
+        }
+
     }
 
     public void stop() {
